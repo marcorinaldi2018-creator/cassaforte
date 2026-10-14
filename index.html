@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob: data:; frame-src blob:; object-src 'none'; connect-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'" />
+  <meta name="referrer" content="no-referrer" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Cassaforte" />
+  <meta name="theme-color" content="#f4f2ee" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#1b1b1a" media="(prefers-color-scheme: dark)" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <link rel="icon" href="icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>Cassaforte</title>
+</head>
+<body>
+  <input id="file-input" type="file" hidden />
+
+  <!-- Primo avvio: scelta del file -->
+  <section id="s-setup" class="screen center" hidden>
+    <div class="hero">
+      <div class="seal" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="9" y="21" width="30" height="21" rx="5"/><path d="M16 21v-6a8 8 0 0 1 16 0v6"/><circle cx="24" cy="31" r="2.6"/><path d="M24 33.5v3.5"/></svg></div>
+      <h1>Cassaforte</h1>
+      <p class="sub">I tuoi documenti, anche sull’iPhone.</p>
+      <ol class="steps">
+        <li>Sul Mac, in Impostazioni, sposta l’archivio in <b>iCloud Drive</b>.</li>
+        <li>Qui sotto tocca <b>Scegli il file</b> e apri<br><span class="path">iCloud Drive › Cassaforte › Cassaforte per iPhone</span></li>
+      </ol>
+      <button class="btn primary wide pick-file" type="button">Scegli il file</button>
+      <p id="setup-err" class="err" role="alert"></p>
+      <p class="note">Il file resta cifrato su questo iPhone: senza la tua password nessuno può leggerlo. La web app non invia dati da nessuna parte.</p>
+      <p id="install-hint" class="note install" hidden>Per usarla come un’app: tocca <b>Condividi</b> <svg class="share-glyph" viewBox="0 0 20 20"><path d="M10 12.5V2.8M6.6 6 10 2.6 13.4 6"/><path d="M6.5 8.5H5a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 5 17.5h10a1.5 1.5 0 0 0 1.5-1.5v-6A1.5 1.5 0 0 0 15 8.5h-1.5"/></svg> in Safari, poi <b>Aggiungi alla schermata Home</b>.</p>
+    </div>
+  </section>
+
+  <!-- Sblocco -->
+  <section id="s-lock" class="screen center" hidden>
+    <form id="lock-form" class="hero" autocomplete="off">
+      <div class="seal" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="9" y="21" width="30" height="21" rx="5"/><path d="M16 21v-6a8 8 0 0 1 16 0v6"/><circle cx="24" cy="31" r="2.6"/><path d="M24 33.5v3.5"/></svg></div>
+      <h1>Cassaforte</h1>
+      <p id="lock-sub" class="sub"></p>
+      <input id="pw" type="password" placeholder="Password principale" autocomplete="current-password" enterkeyhint="go" />
+      <button id="unlock-btn" class="btn primary wide" type="submit">Sblocca</button>
+      <p id="lock-err" class="err" role="alert"></p>
+      <div class="links">
+        <button class="linklike pick-file" type="button">Aggiorna dal file…</button>
+        <button id="forget" class="linklike danger" type="button">Rimuovi da questo iPhone</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- Elenco -->
+  <section id="s-list" class="screen" hidden>
+    <header class="topbar">
+      <h1>Documenti</h1>
+      <button id="lock-btn" class="icon-btn" type="button" aria-label="Blocca">
+        <svg viewBox="0 0 20 20"><rect x="4" y="9" width="12" height="8.5" rx="2"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/></svg>
+      </button>
+    </header>
+    <div class="scroll" id="list-scroll">
+      <div class="search">
+        <svg viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg>
+        <input id="search" type="search" placeholder="Cerca" enterkeyhint="search" />
+      </div>
+      <div id="chips" class="chips"></div>
+      <div id="alert" class="alert" hidden></div>
+      <ul id="list" class="list"></ul>
+      <footer class="foot">
+        <span id="pack-date"></span>
+        <button class="linklike pick-file" type="button">Aggiorna</button>
+      </footer>
+    </div>
+  </section>
+
+  <!-- Dettaglio -->
+  <section id="s-detail" class="screen" hidden>
+    <header class="navbar">
+      <button id="back" class="back" type="button"><svg viewBox="0 0 20 20"><path d="M12.5 4 6.5 10l6 6"/></svg>Documenti</button>
+      <button id="detail-share" class="icon-btn" type="button" aria-label="Condividi">
+        <svg viewBox="0 0 20 20"><path d="M10 12.5V2.8M6.6 6 10 2.6 13.4 6"/><path d="M6.5 8.5H5a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 5 17.5h10a1.5 1.5 0 0 0 1.5-1.5v-6A1.5 1.5 0 0 0 15 8.5h-1.5"/></svg>
+      </button>
+    </header>
+    <div class="scroll" id="detail"></div>
+  </section>
+
+  <!-- Visualizzatore -->
+  <div id="viewer" class="viewer" hidden>
+    <div class="viewer-bar">
+      <button id="viewer-close" class="vbtn" type="button">Chiudi</button>
+      <span id="viewer-name" class="viewer-name"></span>
+      <button id="viewer-share" class="vbtn" type="button">Condividi</button>
+    </div>
+    <div id="viewer-body" class="viewer-body"></div>
+    <div id="viewer-dots" class="viewer-dots"></div>
+  </div>
+
+  <!-- Foglio azioni -->
+  <div id="sheet" class="sheet" hidden>
+    <div class="sheet-backdrop" data-close></div>
+    <div class="sheet-panel">
+      <div id="sheet-title" class="sheet-title"></div>
+      <div id="sheet-actions" class="sheet-actions"></div>
+      <button class="sheet-cancel" type="button" data-close>Annulla</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script src="vendor/scrypt.umd.min.js"></script>
+  <script src="docmodel.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
