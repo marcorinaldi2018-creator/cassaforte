@@ -24,7 +24,7 @@
   <!-- Primo avvio: scelta del file -->
   <section id="s-setup" class="screen center" hidden>
     <div class="hero">
-      <div class="seal" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="9" y="21" width="30" height="21" rx="5"/><path d="M16 21v-6a8 8 0 0 1 16 0v6"/><circle cx="24" cy="31" r="2.6"/><path d="M24 33.5v3.5"/></svg></div>
+      <img class="logo" src="logo.png" alt="" />
       <h1>Cassaforte</h1>
       <p class="sub">I tuoi documenti, anche sull’iPhone.</p>
       <ol class="steps">
@@ -41,7 +41,7 @@
   <!-- Sblocco -->
   <section id="s-lock" class="screen center" hidden>
     <form id="lock-form" class="hero" autocomplete="off">
-      <div class="seal" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="9" y="21" width="30" height="21" rx="5"/><path d="M16 21v-6a8 8 0 0 1 16 0v6"/><circle cx="24" cy="31" r="2.6"/><path d="M24 33.5v3.5"/></svg></div>
+      <img class="logo" src="logo.png" alt="" />
       <h1>Cassaforte</h1>
       <p id="lock-sub" class="sub"></p>
       <input id="pw" type="password" placeholder="Password principale" autocomplete="current-password" enterkeyhint="go" />
@@ -110,8 +110,6 @@
   </div>
 
   <div id="toast" class="toast" role="status"></div>
-  <script src="vendor/scrypt.umd.min.js"></script>
-  <script src="docmodel.js"></script>
-  <script src="app.js"></script>
+  <script src="cassaforte.js"></script>
 </body>
 </html>

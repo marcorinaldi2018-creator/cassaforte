@@ -196,3 +196,5 @@ button { cursor: pointer; }
   opacity: 0; pointer-events: none; transition: 0.2s; z-index: 40; white-space: nowrap;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+.hero .logo { width: 116px; height: 116px; margin: 0 auto 2px; filter: drop-shadow(0 10px 22px rgb(0 0 0 / 0.25)); }
