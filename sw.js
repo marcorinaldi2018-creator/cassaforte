@@ -1,7 +1,7 @@
 'use strict';
 // Rende la web app disponibile anche senza connessione.
 // Contiene solo il codice dell'app: i tuoi dati non passano mai di qui.
-const VERSION = 'cassaforte-7a3000da1192';
+const VERSION = 'cassaforte-09ebd7ca68a4';
 const FILES = ['./', 'index.html', 'cassaforte.js', 'styles.css', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'logo.png'];
 
 self.addEventListener('install', (e) => {

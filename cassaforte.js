@@ -136,6 +136,83 @@ function masked(v) {
   return v.length <= 4 ? v : '•••• ' + v.slice(-4);
 }
 
+// ---------- Persone ----------
+// Ogni documento appartiene a una persona (data.people). doc.holder resta come copia
+// del nome, per compatibilità con le versioni precedenti.
+const PERSON_HUES = [205, 340, 28, 150, 265, 185, 45, 305, 100, 5];
+const RELATIONS = ['Io', 'Coniuge', 'Compagno/a', 'Figlio/a', 'Genitore', 'Fratello/Sorella', 'Nonno/a', 'Nipote', 'Altro'];
+
+const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+
+function nextHue(people) {
+  const used = new Set(people.map((p) => p.hue));
+  return PERSON_HUES.find((h) => !used.has(h)) ?? PERSON_HUES[people.length % PERSON_HUES.length];
+}
+
+// Converte i dati delle versioni precedenti (intestatario scritto a mano) in persone.
+// Restituisce true se ha modificato qualcosa.
+function normalizePeople(data) {
+  let changed = false;
+  if (!Array.isArray(data.people)) {
+    data.people = [];
+    changed = true;
+  }
+  const byName = new Map(data.people.map((p) => [p.name.trim().toLowerCase(), p]));
+  for (const d of data.documents || []) {
+    if (d.personId && data.people.some((p) => p.id === d.personId)) continue;
+    if (d.personId) {
+      d.personId = null;
+      changed = true;
+    }
+    const name = (d.holder || '').trim();
+    if (!name) continue;
+    let p = byName.get(name.toLowerCase());
+    if (!p) {
+      p = { id: newId(), name, relation: '', birth: '', hue: nextHue(data.people), createdAt: new Date().toISOString() };
+      data.people.push(p);
+      byName.set(name.toLowerCase(), p);
+    }
+    d.personId = p.id;
+    changed = true;
+  }
+  return changed;
+}
+
+function sortedPeople(data) {
+  return (data.people || [])
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => (a.p.relation === 'Io' ? -1 : 0) - (b.p.relation === 'Io' ? -1 : 0) || a.i - b.i)
+    .map((x) => x.p);
+}
+
+const personOf = (data, doc) => (doc.personId && (data.people || []).find((p) => p.id === doc.personId)) || null;
+const holderName = (data, doc) => personOf(data, doc)?.name || doc.holder || '';
+
+function initials(name) {
+  const parts = String(name || '?').trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] || '?') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+}
+
+function avatar(person, cls = '') {
+  return person
+    ? el('span', { class: 'avatar ' + cls, style: `--h:${person.hue ?? 205}`, title: person.name }, initials(person.name))
+    : el('span', { class: 'avatar none ' + cls, title: 'Senza intestatario' }, '?');
+}
+
+function ageOf(iso) {
+  if (!iso) return null;
+  const [y, m, d] = iso.split('-').map(Number);
+  const now = new Date();
+  let a = now.getFullYear() - y;
+  if (now.getMonth() + 1 < m || (now.getMonth() + 1 === m && now.getDate() < d)) a--;
+  return a >= 0 ? a : null;
+}
+
+function personSubtitle(p) {
+  const age = ageOf(p.birth);
+  return [p.relation, age != null ? (age === 1 ? '1 anno' : `${age} anni`) : ''].filter(Boolean).join(' · ');
+}
+
 ;
 'use strict';
 /* global hashwasm, TYPES, typeOf, extLabel, el, fmtDate, fmtSize, expiryInfo, needsAttention, mainValue, masked */
@@ -156,6 +233,7 @@ const state = {
   dek: null,
   data: null,
   filter: 'all',
+  person: 'all',
   query: '',
   doc: null,
   blobs: new Map(), // id -> { blob, url }
@@ -234,6 +312,7 @@ async function unlockWith(password) {
   dekRaw.fill(0);
   const data = JSON.parse(new TextDecoder().decode(await openBox(dek, v.data)));
   state.dek = dek;
+  normalizePeople(data);
   state.data = data;
 }
 
@@ -329,6 +408,7 @@ $('lock-form').addEventListener('submit', async (e) => {
     $('pw').value = '';
     $('pw').blur();
     state.filter = 'all';
+    state.person = 'all';
     state.query = '';
     $('search').value = '';
     renderList();
@@ -379,23 +459,47 @@ document.addEventListener('visibilitychange', () => {
 // ---------- Elenco ----------
 function visibleDocs() {
   const q = state.query.trim().toLowerCase();
-  let docs = state.data.documents.slice();
+  let docs = personDocs();
   if (state.filter === 'expiring') docs = docs.filter(needsAttention);
   else if (state.filter !== 'all') docs = docs.filter((d) => typeOf(d).cat === state.filter);
   if (q) {
     docs = docs.filter((d) =>
-      [d.title, d.holder, d.notes, typeOf(d).label, ...Object.values(d.fields || {}), ...(d.custom || []).flatMap((c) => [c.label, c.value])]
+      [d.title, holderName(state.data, d), d.notes, typeOf(d).label, ...Object.values(d.fields || {}), ...(d.custom || []).flatMap((c) => [c.label, c.value])]
         .join(' ').toLowerCase().includes(q));
   }
   const ord = Object.keys(TYPES);
+  const pOrd = new Map(sortedPeople(state.data).map((p, i) => [p.id, i]));
+  const po = (d) => pOrd.get(d.personId) ?? 1e6;
   return docs.sort((a, b) =>
     state.filter === 'expiring'
       ? (expiryInfo(a)?.days ?? 1e9) - (expiryInfo(b)?.days ?? 1e9)
-      : ord.indexOf(a.type) - ord.indexOf(b.type) || (a.holder || '').localeCompare(b.holder || '') || a.title.localeCompare(b.title));
+      : po(a) - po(b) || ord.indexOf(a.type) - ord.indexOf(b.type) || a.title.localeCompare(b.title));
+}
+
+function personDocs() {
+  const docs = state.data.documents;
+  if (state.person === 'all') return docs.slice();
+  if (state.person === 'none') return docs.filter((d) => !personOf(state.data, d));
+  return docs.filter((d) => d.personId === state.person);
 }
 
 function renderList() {
-  const all = state.data.documents;
+  const people = sortedPeople(state.data);
+  const unassigned = state.data.documents.filter((d) => !personOf(state.data, d)).length;
+  const pchip = (id, label, av, n, warn) => el('button', {
+    type: 'button', class: 'pchip' + (state.person === id ? ' on' : ''),
+    onclick: () => { state.person = id; state.filter = 'all'; renderList(); $('list-scroll').scrollTop = 0; },
+  }, av, el('span', { class: 'pn' }, label), n != null ? el('span', { class: 'n' + (warn ? ' hot' : '') }, n) : null);
+  $('people').hidden = people.length < 2 && !unassigned;
+  $('people').replaceChildren(
+    pchip('all', 'Tutti', el('span', { class: 'avatar all' }, '★'), null),
+    ...people.map((p) => {
+      const mine = state.data.documents.filter((d) => d.personId === p.id);
+      return pchip(p.id, p.name.split(' ')[0], avatar(p), mine.length, mine.some(needsAttention));
+    }),
+    unassigned ? pchip('none', 'Altri', avatar(null), unassigned) : null);
+
+  const all = personDocs();
   const hot = all.filter(needsAttention);
   $('chips').replaceChildren(...CATS.map(([id, label]) => {
     const n = id === 'all' ? all.length : id === 'expiring' ? hot.length : all.filter((d) => typeOf(d).cat === id).length;
@@ -415,19 +519,39 @@ function renderList() {
   alert.onclick = () => { state.filter = 'expiring'; renderList(); };
 
   const docs = visibleDocs();
-  $('list').replaceChildren(...(docs.length ? docs.map((d) => {
+  const grouped = state.person === 'all' && state.filter !== 'expiring' && people.length > 1;
+  const showPerson = state.person === 'all' && !grouped;
+  const item = (d) => {
     const t = typeOf(d);
     const exp = expiryInfo(d);
     return el('li', {}, el('button', { class: 'item', type: 'button', onclick: () => openDetail(d) },
       el('div', { class: 'badge', style: `--h:${t.hue}` }, t.emoji),
       el('div', { class: 'item-main' },
         el('div', { class: 'item-title' }, d.title),
-        el('div', { class: 'item-sub' }, [d.holder, masked(mainValue(d))].filter(Boolean).join(' · ') || t.label),
+        el('div', { class: 'item-sub' }, [showPerson ? holderName(state.data, d) : '', masked(mainValue(d))].filter(Boolean).join(' · ') || t.label),
         exp || d.files?.length ? el('div', { class: 'item-meta' },
           exp ? el('span', { class: 'pill ' + exp.cls }, exp.short) : null,
           d.files?.length ? el('span', { class: 'pill neutral' }, `📎 ${d.files.length}`) : null) : null),
       el('span', { class: 'chev', html: '<svg viewBox="0 0 20 20"><path d="M7.5 4l6 6-6 6"/></svg>' })));
-  }) : [el('li', { class: 'empty' }, all.length ? 'Nessun risultato.' : 'Nessun documento in questa copia.')]));
+  };
+  const sections = [];
+  if (!docs.length) {
+    sections.push(el('ul', { class: 'list' }, el('li', { class: 'empty' }, all.length ? 'Nessun risultato.' : 'Nessun documento qui.')));
+  } else if (!grouped) {
+    sections.push(el('ul', { class: 'list' }, ...docs.map(item)));
+  } else {
+    const groups = new Map();
+    for (const d of docs) {
+      const k = personOf(state.data, d)?.id ?? 'none';
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(d);
+    }
+    for (const [k, list] of groups) {
+      const p = people.find((x) => x.id === k) || null;
+      sections.push(el('div', { class: 'list-title' }, avatar(p, 'xs'), p ? p.name : 'Senza intestatario'), el('ul', { class: 'list' }, ...list.map(item)));
+    }
+  }
+  $('list').replaceChildren(...sections);
 
   $('pack-date').textContent = state.meta?.createdAt ? `Dati del ${fmtStamp(state.meta.createdAt)}` : '';
 }
@@ -451,7 +575,7 @@ function openDetail(doc) {
   const rows = [];
   const row = (label, value, mono) => rows.push(el('button', { class: 'field', type: 'button', onclick: () => copy(label, value) },
     el('span', { class: 'k' }, label), el('span', { class: 'v' + (mono ? ' mono' : '') }, value), el('span', { class: 'cp' }, 'Copia')));
-  if (doc.holder) row('Intestatario', doc.holder);
+  if (holderName(state.data, doc)) row('Intestatario', holderName(state.data, doc));
   for (const f of t.fields) if (doc.fields[f.k]) row(f.l, f.t === 'date' ? fmtDate(doc.fields[f.k]) : doc.fields[f.k], f.mono);
   for (const c of doc.custom || []) if (c.value) row(c.label || 'Campo', c.value);
 
@@ -475,7 +599,7 @@ function openDetail(doc) {
     el('div', { class: 'd-head' },
       el('div', { class: 'badge lg', style: `--h:${t.hue}` }, t.emoji),
       el('h2', {}, doc.title),
-      el('div', { class: 'd-sub' }, t.label),
+      el('div', { class: 'd-sub' }, personOf(state.data, doc) ? el('span', { class: 'owner' }, avatar(personOf(state.data, doc), 'xs'), holderName(state.data, doc)) : null, t.label),
       exp ? el('span', { class: 'pill ' + exp.cls }, exp.label) : null),
     rows.length ? el('div', { class: 'group' }, ...rows) : el('p', { class: 'hint' }, 'Nessun dato inserito.'),
     rows.length ? el('p', { class: 'hint' }, 'Tocca un dato per copiarlo.') : null,
@@ -558,7 +682,8 @@ $('viewer-body').addEventListener('touchend', (e) => {
 // ---------- Condivisione ----------
 function sheetText(doc) {
   const t = typeOf(doc);
-  const lines = [`${doc.title}${doc.holder ? ' — ' + doc.holder : ''}`, t.label, ''];
+  const who = holderName(state.data, doc);
+  const lines = [`${doc.title}${who ? ' — ' + who : ''}`, t.label, ''];
   for (const f of t.fields) if (doc.fields[f.k]) lines.push(`${f.l}: ${f.t === 'date' ? fmtDate(doc.fields[f.k]) : doc.fields[f.k]}`);
   for (const c of doc.custom || []) if (c.value) lines.push(`${c.label || 'Campo'}: ${c.value}`);
   if (doc.notes) lines.push('', 'Note: ' + doc.notes);
