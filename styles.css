@@ -216,3 +216,7 @@ button { cursor: pointer; }
 .list-title { display: flex; align-items: center; gap: 8px; margin: 18px 32px 7px; font-size: 13px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
 .list-title:first-child { margin-top: 2px; }
 .d-sub .owner { display: inline-flex; align-items: center; gap: 5px; background: var(--card); border-radius: 99px; padding: 2px 10px 2px 3px; margin-right: 8px; color: var(--ink); font-size: 14px; }
+
+.btn.face { display: flex; justify-content: center; align-items: center; gap: 9px; background: var(--card); color: var(--accent); border: 1px solid var(--line-2); }
+.btn.face svg { width: 22px; height: 22px; }
+.sheet-btn.strong { font-weight: 600; }

@@ -308,12 +308,124 @@ async function unlockWith(password) {
   } finally {
     kek.fill(0);
   }
-  const dek = await aesKey(dekRaw);
-  dekRaw.fill(0);
-  const data = JSON.parse(new TextDecoder().decode(await openBox(dek, v.data)));
+  try {
+    await openWithDek(dekRaw);
+  } finally {
+    dekRaw.fill(0);
+  }
+}
+
+// La chiave dati resta in memoria finché la cassaforte è aperta (serve per attivare Face ID).
+async function openWithDek(dekRaw) {
+  const dek = await crypto.subtle.importKey('raw', dekRaw, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']);
+  const data = JSON.parse(new TextDecoder().decode(await openBox(dek, state.pack.header.vault.data)));
   state.dek = dek;
   normalizePeople(data);
   state.data = data;
+}
+
+// ---------- Face ID (passkey con estensione PRF) ----------
+// Dopo Face ID la passkey restituisce un segreto che esiste solo nel Portachiavi iCloud;
+// da quel segreto si ricava la chiave che protegge, su questo iPhone, la chiave dati.
+const FACE_INFO = new TextEncoder().encode('cassaforte-faceid-v1');
+const rnd = (n) => crypto.getRandomValues(new Uint8Array(n));
+
+async function faceIdSupported() {
+  if (!window.PublicKeyCredential || !window.isSecureContext) return false;
+  try {
+    if (PublicKeyCredential.getClientCapabilities) {
+      const caps = await PublicKeyCredential.getClientCapabilities();
+      if (caps['extension:prf'] === false) return false;
+    }
+    return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+  } catch {
+    return false;
+  }
+}
+
+async function prfWrapKey(secret) {
+  const base = await crypto.subtle.importKey('raw', secret, 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: FACE_INFO }, base,
+    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+
+const NO_PRF = 'Questo iPhone non permette Face ID nelle web app: serve iOS 18 o successivo, con il Portachiavi iCloud attivo.';
+
+async function prfSecret(credId, salt) {
+  const cred = await navigator.credentials.get({ publicKey: {
+    challenge: rnd(32), allowCredentials: [{ type: 'public-key', id: credId }], userVerification: 'required', timeout: 60000,
+    extensions: { prf: { eval: { first: salt } } },
+  } });
+  const out = cred.getClientExtensionResults()?.prf?.results?.first;
+  if (!out) throw new Error(NO_PRF);
+  return new Uint8Array(out);
+}
+
+let pendingFace = null;
+
+// Passo 1 (da un tocco): crea la passkey. Se iOS restituisce già il segreto si chiude qui,
+// altrimenti serve un secondo tocco di conferma (passo 2).
+async function startFaceId() {
+  const salt = rnd(32);
+  const cred = await navigator.credentials.create({ publicKey: {
+    rp: { name: 'Cassaforte' },
+    user: { id: rnd(16), name: 'Cassaforte', displayName: 'Cassaforte' },
+    challenge: rnd(32),
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+    authenticatorSelection: { authenticatorAttachment: 'platform', residentKey: 'required', userVerification: 'required' },
+    timeout: 60000,
+    extensions: { prf: { eval: { first: salt } } },
+  } });
+  const prf = cred.getClientExtensionResults()?.prf;
+  if (prf && prf.enabled === false) throw new Error(NO_PRF);
+  pendingFace = { credId: new Uint8Array(cred.rawId), salt };
+  if (prf?.results?.first) {
+    await finishFaceId(new Uint8Array(prf.results.first));
+    return true;
+  }
+  return false;
+}
+
+async function confirmFaceId() {
+  await finishFaceId(await prfSecret(pendingFace.credId, pendingFace.salt));
+}
+
+async function finishFaceId(secret) {
+  const key = await prfWrapKey(secret);
+  secret.fill(0);
+  const dekRaw = new Uint8Array(await crypto.subtle.exportKey('raw', state.dek));
+  const iv = rnd(12);
+  const wrapped = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, dekRaw));
+  dekRaw.fill(0);
+  await idbSet('faceid', { credId: pendingFace.credId, salt: pendingFace.salt, iv, wrapped, createdAt: new Date().toISOString() });
+  pendingFace = null;
+}
+
+async function faceUnlock() {
+  const rec = await idbGet('faceid').catch(() => null);
+  if (!rec || !state.pack) return;
+  const btn = $('face-btn');
+  btn.disabled = true;
+  $('lock-err').textContent = '';
+  try {
+    const key = await prfWrapKey(await prfSecret(rec.credId, rec.salt));
+    let dekRaw;
+    try {
+      dekRaw = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: rec.iv }, key, rec.wrapped));
+      await openWithDek(dekRaw);
+    } catch {
+      await idbDel('faceid');
+      btn.hidden = true;
+      throw new Error('Face ID non vale più per questa copia: usa la password, poi riattivalo.');
+    } finally {
+      if (dekRaw) dekRaw.fill(0);
+    }
+    enterApp();
+  } catch (err) {
+    if (err.name !== 'NotAllowedError' && err.name !== 'AbortError') $('lock-err').textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function fileBlob(id, mime) {
@@ -354,7 +466,10 @@ function showLock(message = '') {
   $('lock-sub').textContent = state.meta?.createdAt ? `Copia del ${fmtStamp(state.meta.createdAt)}` : '';
   $('lock-err').textContent = message;
   $('pw').value = '';
+  $('face-btn').hidden = true;
+  idbGet('faceid').then((rec) => { $('face-btn').hidden = !rec; }).catch(() => {});
 }
+$('face-btn').onclick = faceUnlock;
 
 // ---------- Importazione del file ----------
 document.addEventListener('click', (e) => {
@@ -388,6 +503,7 @@ $('file-input').addEventListener('change', async () => {
 $('forget').onclick = async () => {
   if (!confirm('Rimuovere la copia cifrata da questo iPhone? I documenti sul Mac e in iCloud non vengono toccati.')) return;
   await idbDel('current');
+  await idbDel('faceid').catch(() => {});
   state.pack = null;
   state.meta = null;
   showSetup();
@@ -405,15 +521,8 @@ $('lock-form').addEventListener('submit', async (e) => {
   await new Promise((r) => setTimeout(r, 30)); // lascia aggiornare il pulsante prima del calcolo
   try {
     await unlockWith(pw);
-    $('pw').value = '';
-    $('pw').blur();
-    state.filter = 'all';
-    state.person = 'all';
-    state.query = '';
-    $('search').value = '';
-    renderList();
-    show('s-list');
-    resetIdle();
+    enterApp();
+    offerFaceId();
   } catch (err) {
     $('lock-err').textContent = err.wrong ? 'Password errata.' : 'Impossibile aprire la copia: ' + err.message;
     $('lock-form').classList.remove('shake');
@@ -425,7 +534,59 @@ $('lock-form').addEventListener('submit', async (e) => {
   }
 });
 
+function enterApp() {
+  $('pw').value = '';
+  $('pw').blur();
+  state.filter = 'all';
+  state.person = 'all';
+  state.query = '';
+  $('search').value = '';
+  renderList();
+  show('s-list');
+  resetIdle();
+}
+
+// Dopo uno sblocco con password propone Face ID (una volta, finché non si risponde).
+async function offerFaceId() {
+  if (await idbGet('faceid').catch(() => null)) return;
+  if (await idbGet('faceid-no').catch(() => null)) return;
+  if (!(await faceIdSupported())) return;
+  setTimeout(() => {
+    if (!state.data) return;
+    openFaceSheet('Vuoi aprire Cassaforte con Face ID la prossima volta? La password resterà sempre valida.', true);
+  }, 400);
+}
+
+function openFaceSheet(message, withDecline) {
+  $('sheet-title').textContent = message;
+  $('sheet-actions').replaceChildren(...[
+    el('button', { type: 'button', class: 'sheet-btn strong', onclick: async (e) => {
+      e.currentTarget.disabled = true;
+      try {
+        const done = pendingFace ? (await confirmFaceId(), true) : await startFaceId();
+        if (done) {
+          closeSheet();
+          toast('Face ID attivato');
+          renderList();
+        } else {
+          openFaceSheet('Ultimo passaggio: conferma con Face ID per completare l’attivazione.', false);
+        }
+      } catch (err) {
+        closeSheet();
+        pendingFace = null;
+        if (err.name !== 'NotAllowedError' && err.name !== 'AbortError') toast(err.message);
+      }
+    } }, pendingFace ? 'Conferma con Face ID' : 'Attiva Face ID'),
+    withDecline ? el('button', { type: 'button', class: 'sheet-btn', onclick: async () => {
+      await idbSet('faceid-no', true).catch(() => {});
+      closeSheet();
+    } }, 'Non chiederlo più') : null,
+  ].filter(Boolean));
+  $('sheet').hidden = false;
+}
+
 function lockNow(silent = false) {
+  pendingFace = null;
   state.dek = null;
   state.data = null;
   state.doc = null;
@@ -491,13 +652,13 @@ function renderList() {
     onclick: () => { state.person = id; state.filter = 'all'; renderList(); $('list-scroll').scrollTop = 0; },
   }, av, el('span', { class: 'pn' }, label), n != null ? el('span', { class: 'n' + (warn ? ' hot' : '') }, n) : null);
   $('people').hidden = people.length < 2 && !unassigned;
-  $('people').replaceChildren(
+  $('people').replaceChildren(...[
     pchip('all', 'Tutti', el('span', { class: 'avatar all' }, '★'), null),
     ...people.map((p) => {
       const mine = state.data.documents.filter((d) => d.personId === p.id);
       return pchip(p.id, p.name.split(' ')[0], avatar(p), mine.length, mine.some(needsAttention));
     }),
-    unassigned ? pchip('none', 'Altri', avatar(null), unassigned) : null);
+    unassigned ? pchip('none', 'Altri', avatar(null), unassigned) : null].filter(Boolean));
 
   const all = personDocs();
   const hot = all.filter(needsAttention);
@@ -554,6 +715,25 @@ function renderList() {
   $('list').replaceChildren(...sections);
 
   $('pack-date').textContent = state.meta?.createdAt ? `Dati del ${fmtStamp(state.meta.createdAt)}` : '';
+  renderFaceToggle();
+}
+
+async function renderFaceToggle() {
+  const btn = $('face-toggle');
+  const rec = await idbGet('faceid').catch(() => null);
+  btn.hidden = !rec && !(await faceIdSupported());
+  btn.textContent = rec ? 'Disattiva Face ID' : 'Attiva Face ID';
+  btn.onclick = async () => {
+    if (rec) {
+      if (!confirm('Disattivare lo sblocco con Face ID su questo iPhone? Potrai eliminare la passkey «Cassaforte» dall’app Password.')) return;
+      await idbDel('faceid');
+      toast('Face ID disattivato');
+      renderFaceToggle();
+    } else {
+      pendingFace = null;
+      openFaceSheet('Attivando Face ID, iOS ti chiederà di salvare una passkey «Cassaforte». La password resterà sempre valida.', false);
+    }
+  };
 }
 
 $('search').addEventListener('input', (e) => { state.query = e.target.value; renderList(); });

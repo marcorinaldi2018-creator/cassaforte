@@ -46,6 +46,7 @@
       <p id="lock-sub" class="sub"></p>
       <input id="pw" type="password" placeholder="Password principale" autocomplete="current-password" enterkeyhint="go" />
       <button id="unlock-btn" class="btn primary wide" type="submit">Sblocca</button>
+      <button id="face-btn" class="btn wide face" type="button" hidden><svg viewBox="0 0 20 20"><path d="M3 6.5V5a2 2 0 0 1 2-2h1.5M13.5 3H15a2 2 0 0 1 2 2v1.5M17 13.5V15a2 2 0 0 1-2 2h-1.5M6.5 17H5a2 2 0 0 1-2-2v-1.5"/><path d="M7 7.5v1.2M13 7.5v1.2M10 7.5v3.3H9"/><path d="M7.3 13.2c1.6 1.2 3.8 1.2 5.4 0"/></svg>Sblocca con Face ID</button>
       <p id="lock-err" class="err" role="alert"></p>
       <div class="links">
         <button class="linklike pick-file" type="button">Aggiorna dal file…</button>
@@ -74,6 +75,7 @@
       <footer class="foot">
         <span id="pack-date"></span>
         <button class="linklike pick-file" type="button">Aggiorna</button>
+        <button id="face-toggle" class="linklike" type="button" hidden></button>
       </footer>
     </div>
   </section>
