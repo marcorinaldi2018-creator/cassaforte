@@ -213,6 +213,32 @@ function personSubtitle(p) {
   return [p.relation, age != null ? (age === 1 ? '1 anno' : `${age} anni`) : ''].filter(Boolean).join(' · ');
 }
 
+// ---------- Promemoria ----------
+const DEFAULT_REMINDERS = { enabled: true, days: [30, 15, 7, 1], hour: 9, details: true };
+const PRESET_DAYS = [90, 60, 30, 15, 7, 3, 1, 0];
+
+function reminderSettings(data) {
+  const r = { ...DEFAULT_REMINDERS, ...(data?.settings?.reminders || {}) };
+  r.days = [...new Set((r.days || []).map(Number))].sort((a, b) => b - a);
+  return r;
+}
+
+const daysLabel = (d) => (d === 0 ? 'Il giorno stesso' : d === 1 ? '1 giorno' : `${d} giorni`);
+
+// Date future in cui arriverà un avviso per questo documento.
+function docReminderDates(doc, rs) {
+  const iso = expiryDate(doc);
+  if (!iso || doc.noReminders || !rs.enabled) return [];
+  const [y, m, d] = iso.split('-').map(Number);
+  const now = new Date();
+  return rs.days
+    .map((n) => ({ days: n, at: new Date(y, m - 1, d - n, rs.hour, 0, 0) }))
+    .filter((x) => x.at > now)
+    .sort((a, b) => a.at - b.at);
+}
+
+const fmtShortDate = (dt) => dt.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: dt.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined });
+
 ;
 'use strict';
 /* global hashwasm, TYPES, typeOf, extLabel, el, fmtDate, fmtSize, expiryInfo, needsAttention, mainValue, masked */
