@@ -239,6 +239,31 @@ function docReminderDates(doc, rs) {
 
 const fmtShortDate = (dt) => dt.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: dt.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined });
 
+// ---------- Ordine dei campi ----------
+// I nomi dei campi del modello si possono cambiare per singolo documento (doc.labels).
+// Ogni documento può avere un ordine personalizzato (doc.order) che mescola i campi
+// del modello ("f:numero") e quelli aggiunti a mano ("c:<id>"). I campi non presenti
+// nell'ordine seguono, nell'ordine naturale.
+function fieldEntries(doc, { withEmpty = false } = {}) {
+  const t = typeOf(doc);
+  const entries = [
+    ...t.fields.map((f) => ({ key: 'f:' + f.k, kind: 'field', def: f, label: (doc.labels || {})[f.k] || f.l, value: (doc.fields || {})[f.k] || '' })),
+    ...(doc.custom || []).map((c, i) => ({ key: 'c:' + (c.id ?? i), kind: 'custom', custom: c, label: c.label || 'Campo', value: c.value || '' })),
+  ];
+  const order = doc.order || [];
+  const pos = (k) => {
+    const i = order.indexOf(k);
+    return i < 0 ? 1e6 : i;
+  };
+  return entries
+    .map((e, i) => ({ e, i }))
+    .sort((a, b) => pos(a.e.key) - pos(b.e.key) || a.i - b.i)
+    .map((x) => x.e)
+    .filter((e) => withEmpty || String(e.value).trim());
+}
+
+const entryText = (e) => (e.def?.t === 'date' ? fmtDate(e.value) : e.value);
+
 ;
 'use strict';
 /* global hashwasm, TYPES, typeOf, extLabel, el, fmtDate, fmtSize, expiryInfo, needsAttention, mainValue, masked */
@@ -782,8 +807,7 @@ function openDetail(doc) {
   const row = (label, value, mono) => rows.push(el('button', { class: 'field', type: 'button', onclick: () => copy(label, value) },
     el('span', { class: 'k' }, label), el('span', { class: 'v' + (mono ? ' mono' : '') }, value), el('span', { class: 'cp' }, 'Copia')));
   if (holderName(state.data, doc)) row('Intestatario', holderName(state.data, doc));
-  for (const f of t.fields) if (doc.fields[f.k]) row(f.l, f.t === 'date' ? fmtDate(doc.fields[f.k]) : doc.fields[f.k], f.mono);
-  for (const c of doc.custom || []) if (c.value) row(c.label || 'Campo', c.value);
+  for (const e of fieldEntries(doc)) row(e.label, entryText(e), e.def?.mono);
 
   const thumbs = (doc.files || []).map((f, i) => {
     const img = el('div', { class: 'thumb-img loading' });
@@ -890,8 +914,7 @@ function sheetText(doc) {
   const t = typeOf(doc);
   const who = holderName(state.data, doc);
   const lines = [`${doc.title}${who ? ' — ' + who : ''}`, t.label, ''];
-  for (const f of t.fields) if (doc.fields[f.k]) lines.push(`${f.l}: ${f.t === 'date' ? fmtDate(doc.fields[f.k]) : doc.fields[f.k]}`);
-  for (const c of doc.custom || []) if (c.value) lines.push(`${c.label || 'Campo'}: ${c.value}`);
+  for (const e of fieldEntries(doc)) lines.push(`${e.label}: ${entryText(e)}`);
   if (doc.notes) lines.push('', 'Note: ' + doc.notes);
   return lines.join('\n');
 }
