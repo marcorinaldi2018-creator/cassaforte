@@ -11,74 +11,147 @@
 // Modello dei documenti condiviso tra l'app Mac e la web app iPhone:
 // tipi, campi, scadenze e formattazione. Modificalo qui e rigenera la web app.
 
+// ---------- Sezioni ----------
+const SECTIONS = [
+  { id: 'identita', short: 'Documenti', label: 'Documenti personali', icon: '<svg viewBox="0 0 20 20"><rect x="2.5" y="4.5" width="15" height="11" rx="2"/><circle cx="7.5" cy="9.5" r="1.8"/><path d="M5 13c.5-1.3 1.4-2 2.5-2s2 .7 2.5 2M12 8.5h3M12 11h3"/></svg>' },
+  { id: 'veicoli', label: 'Auto e veicoli', icon: '<svg viewBox="0 0 20 20"><path d="M3.5 13V10l1.8-4h9.4l1.8 4v3"/><rect x="2.5" y="10" width="15" height="4" rx="1.2"/><circle cx="6" cy="14.5" r="1.2"/><circle cx="14" cy="14.5" r="1.2"/></svg>' },
+  { id: 'casa', label: 'Casa e utenze', icon: '<svg viewBox="0 0 20 20"><path d="M3.5 9.5 10 4l6.5 5.5"/><path d="M5.5 8v8h9V8"/><path d="M8.5 16v-4h3v4"/></svg>' },
+  { id: 'elettro', label: 'Elettrodomestici', icon: '<svg viewBox="0 0 20 20"><rect x="4" y="2.5" width="12" height="15" rx="2"/><circle cx="10" cy="11" r="3.5"/><path d="M6.5 5.5h2M12.5 5.5h1"/></svg>' },
+  { id: 'garanzie', short: 'Garanzie', label: 'Garanzie e acquisti', icon: '<svg viewBox="0 0 20 20"><path d="M10 2.8 4.5 5v4.5c0 3.6 2.4 6.3 5.5 7.7 3.1-1.4 5.5-4.1 5.5-7.7V5z"/><path d="m7.5 10 1.8 1.8L12.8 8"/></svg>' },
+  { id: 'salute', label: 'Salute', icon: '<svg viewBox="0 0 20 20"><path d="M10 16.5s-6-3.6-6-8.2A3.3 3.3 0 0 1 10 6.4a3.3 3.3 0 0 1 6 1.9c0 4.6-6 8.2-6 8.2z"/></svg>' },
+  { id: 'polizze', short: 'Assicurazioni', label: 'Assicurazioni e abbonamenti', icon: '<svg viewBox="0 0 20 20"><path d="M3 10a7 7 0 0 1 14 0z"/><path d="M10 10v5.5a1.5 1.5 0 0 0 3 0"/><path d="M10 3v.5"/></svg>' },
+  { id: 'finanze', label: 'Banca e carte', icon: '<svg viewBox="0 0 20 20"><rect x="2.5" y="5" width="15" height="10" rx="2"/><path d="M2.5 8.5h15M5.5 12h3"/></svg>' },
+  { id: 'viaggio', label: 'Viaggi', icon: '<svg viewBox="0 0 20 20"><path d="M3 11.5 17 6l-3 9-3.5-3-2.5 3-.5-4.5z"/></svg>' },
+  { id: 'formazione', short: 'Lavoro e formazione', label: 'Lavoro e formazione', icon: '<svg viewBox="0 0 20 20"><path d="M2.5 8 10 4.5 17.5 8 10 11.5z"/><path d="M5.5 9.5v3.5c1.2 1.3 2.7 2 4.5 2s3.3-.7 4.5-2V9.5"/><path d="M17.5 8v4"/></svg>' },
+  { id: 'animali', short: 'Animali', label: 'Animali domestici', icon: '<svg viewBox="0 0 20 20"><circle cx="5.8" cy="8.4" r="1.5"/><circle cx="8.8" cy="5.4" r="1.5"/><circle cx="12.4" cy="5.6" r="1.5"/><circle cx="15" cy="8.8" r="1.5"/><path d="M7 15c0-2.5 1.6-4.5 3.6-4.5s3.4 1.8 3.4 4c0 1.3-1 1.9-2 1.6-.9-.3-1.4-.4-2.2 0C8.4 16.6 7 16.4 7 15z"/></svg>' },
+  { id: 'altro', label: 'Altro', icon: '<svg viewBox="0 0 20 20"><path d="M5.5 2.5h6l3.5 3.5v11.5h-9.5z"/><path d="M11.5 2.5V6h3.5"/></svg>' },
+];
+
 // ---------- Tipi di documento ----------
+// Le chiavi dei tipi già esistenti (cie, passaporto, …) non vanno cambiate: sono nei dati salvati.
+// auto: la data si calcola da un altro campo (es. fine garanzia = acquisto + 24 mesi).
+const D = (k, l, extra = {}) => ({ k, l, t: 'date', ...extra });
+const EXP = (k, l, extra = {}) => D(k, l, { expiry: true, ...extra });
+const WARRANTY = EXP('scadenza', 'Fine garanzia', { auto: { from: 'acquisto', months: 24, why: 'garanzia legale di 2 anni dall’acquisto' } });
+
 const TYPES = {
-  cie: {
-    label: "Carta d'identità", emoji: '🪪', hue: 200, cat: 'identita',
-    fields: [
-      { k: 'numero', l: 'Numero documento', mono: true, main: true },
-      { k: 'comune', l: 'Comune di rilascio' },
-      { k: 'rilascio', l: 'Data di rilascio', t: 'date' },
-      { k: 'scadenza', l: 'Scadenza', t: 'date', expiry: true },
-    ],
-  },
-  passaporto: {
-    label: 'Passaporto', emoji: '🛂', hue: 340, cat: 'viaggio',
-    fields: [
-      { k: 'numero', l: 'Numero passaporto', mono: true, main: true },
-      { k: 'autorita', l: 'Autorità di rilascio' },
-      { k: 'rilascio', l: 'Data di rilascio', t: 'date' },
-      { k: 'scadenza', l: 'Scadenza', t: 'date', expiry: true },
-    ],
-  },
-  patente: {
-    label: 'Patente di guida', emoji: '🚗', hue: 28, cat: 'veicoli',
-    fields: [
-      { k: 'numero', l: 'Numero patente', mono: true, main: true },
-      { k: 'categorie', l: 'Categorie', ph: 'es. B, AM' },
-      { k: 'rilasciataDa', l: 'Rilasciata da', ph: 'es. MIT-UCO' },
-      { k: 'rilascio', l: 'Data di rilascio', t: 'date' },
-      { k: 'scadenza', l: 'Scadenza', t: 'date', expiry: true },
-    ],
-  },
-  sanitaria: {
-    label: 'Tessera sanitaria', emoji: '🏥', hue: 150, cat: 'salute',
-    fields: [
-      { k: 'codiceFiscale', l: 'Codice fiscale', mono: true, main: true, upper: true },
-      { k: 'numeroTessera', l: 'N. identificazione tessera', mono: true },
-      { k: 'scadenza', l: 'Scadenza', t: 'date', expiry: true },
-    ],
-  },
-  elettorale: {
-    label: 'Tessera elettorale', emoji: '🗳️', hue: 260, cat: 'identita',
-    fields: [
-      { k: 'numero', l: 'Numero tessera', mono: true, main: true },
-      { k: 'comune', l: 'Comune' },
-      { k: 'sezione', l: 'Sezione' },
-    ],
-  },
-  veicolo: {
-    label: 'Libretto veicolo', emoji: '📘', hue: 215, cat: 'veicoli',
-    fields: [
-      { k: 'targa', l: 'Targa', mono: true, main: true, upper: true },
-      { k: 'modello', l: 'Marca e modello' },
-      { k: 'telaio', l: 'Numero di telaio', mono: true, upper: true },
-      { k: 'revisione', l: 'Prossima revisione', t: 'date', expiry: true },
-    ],
-  },
-  polizza: {
-    label: 'Assicurazione', emoji: '🛡️', hue: 180, cat: 'altro',
-    fields: [
-      { k: 'compagnia', l: 'Compagnia' },
-      { k: 'numero', l: 'Numero polizza', mono: true, main: true },
-      { k: 'scadenza', l: 'Scadenza', t: 'date', expiry: true },
-    ],
-  },
+  // Documenti personali
+  cie: { label: "Carta d'identità", emoji: '🪪', hue: 200, cat: 'identita', fields: [
+    { k: 'numero', l: 'Numero documento', mono: true, main: true }, { k: 'comune', l: 'Comune di rilascio' },
+    D('rilascio', 'Data di rilascio'), EXP('scadenza', 'Scadenza')] },
+  passaporto: { label: 'Passaporto', emoji: '🛂', hue: 340, cat: 'identita', fields: [
+    { k: 'numero', l: 'Numero passaporto', mono: true, main: true }, { k: 'autorita', l: 'Autorità di rilascio' },
+    D('rilascio', 'Data di rilascio'), EXP('scadenza', 'Scadenza')] },
+  patente: { label: 'Patente di guida', emoji: '🚗', hue: 28, cat: 'identita', fields: [
+    { k: 'numero', l: 'Numero patente', mono: true, main: true }, { k: 'categorie', l: 'Categorie', ph: 'es. B, AM' },
+    { k: 'rilasciataDa', l: 'Rilasciata da', ph: 'es. MIT-UCO' }, D('rilascio', 'Data di rilascio'), EXP('scadenza', 'Scadenza')] },
+  sanitaria: { label: 'Tessera sanitaria', emoji: '🏥', hue: 150, cat: 'identita', fields: [
+    { k: 'codiceFiscale', l: 'Codice fiscale', mono: true, main: true, upper: true },
+    { k: 'numeroTessera', l: 'N. identificazione tessera', mono: true }, EXP('scadenza', 'Scadenza')] },
+  elettorale: { label: 'Tessera elettorale', emoji: '🗳️', hue: 260, cat: 'identita', fields: [
+    { k: 'numero', l: 'Numero tessera', mono: true, main: true }, { k: 'comune', l: 'Comune' }, { k: 'sezione', l: 'Sezione' }] },
+  certificato: { label: 'Certificato o atto', emoji: '📜', hue: 35, cat: 'identita', fields: [
+    { k: 'tipo', l: 'Tipo', ph: 'es. Residenza, Nascita, ISEE' }, { k: 'ente', l: 'Rilasciato da' },
+    { k: 'numero', l: 'Numero / protocollo', mono: true, main: true }, D('rilascio', 'Data di rilascio'), EXP('scadenza', 'Valido fino al')] },
+
+  // Auto e veicoli
+  veicolo: { label: 'Libretto di circolazione', emoji: '📘', hue: 215, cat: 'veicoli', fields: [
+    { k: 'targa', l: 'Targa', mono: true, main: true, upper: true }, { k: 'modello', l: 'Marca e modello' },
+    { k: 'telaio', l: 'Numero di telaio', mono: true, upper: true }, D('immatricolazione', 'Prima immatricolazione'),
+    EXP('revisione', 'Prossima revisione')] },
+  rca: { label: 'Assicurazione auto', emoji: '🚘', hue: 190, cat: 'veicoli', fields: [
+    { k: 'targa', l: 'Targa', mono: true, main: true, upper: true }, { k: 'compagnia', l: 'Compagnia' },
+    { k: 'numero', l: 'Numero polizza', mono: true }, { k: 'premio', l: 'Premio annuo', ph: 'es. 480 €' }, EXP('scadenza', 'Scadenza')] },
+  bollo: { label: 'Bollo auto', emoji: '🧾', hue: 50, cat: 'veicoli', fields: [
+    { k: 'targa', l: 'Targa', mono: true, main: true, upper: true }, { k: 'regione', l: 'Regione' },
+    { k: 'importo', l: 'Importo', ph: 'es. 210 €' }, D('pagato', 'Ultimo pagamento'), EXP('scadenza', 'Da pagare entro')] },
+  revisione: { label: 'Revisione', emoji: '🔧', hue: 230, cat: 'veicoli', fields: [
+    { k: 'targa', l: 'Targa', mono: true, main: true, upper: true }, { k: 'officina', l: 'Centro revisioni' },
+    D('ultima', 'Ultima revisione'), { k: 'km', l: 'Km alla revisione' }, EXP('scadenza', 'Prossima revisione')] },
+  tagliando: { label: 'Tagliando e manutenzione', emoji: '🛠️', hue: 20, cat: 'veicoli', fields: [
+    { k: 'targa', l: 'Targa', mono: true, main: true, upper: true }, { k: 'officina', l: 'Officina' },
+    D('data', 'Ultimo tagliando'), { k: 'km', l: 'Km al tagliando' }, { k: 'prossimoKm', l: 'Prossimo a km' },
+    EXP('scadenza', 'Prossimo entro il')] },
+  pneumatici: { label: 'Pneumatici', emoji: '🛞', hue: 0, cat: 'veicoli', fields: [
+    { k: 'targa', l: 'Targa', mono: true, main: true, upper: true }, { k: 'tipo', l: 'Tipo', ph: 'Estivi, invernali, 4 stagioni' },
+    { k: 'marca', l: 'Marca e misura' }, { k: 'deposito', l: 'Depositati presso' }, EXP('scadenza', 'Prossimo cambio')] },
+
+  // Casa e utenze
+  utenza: { label: 'Utenza', emoji: '💡', hue: 45, cat: 'casa', fields: [
+    { k: 'servizio', l: 'Servizio', ph: 'Luce, gas, acqua, internet' }, { k: 'fornitore', l: 'Fornitore' },
+    { k: 'codice', l: 'Codice cliente', mono: true, main: true }, { k: 'pod', l: 'POD / PDR / n. contatore', mono: true, upper: true },
+    EXP('scadenza', 'Fine offerta / rinnovo')] },
+  contratto: { label: 'Affitto o mutuo', emoji: '🏠', hue: 25, cat: 'casa', fields: [
+    { k: 'tipo', l: 'Tipo', ph: 'Affitto, mutuo' }, { k: 'controparte', l: 'Banca / proprietario' },
+    { k: 'numero', l: 'Numero contratto', mono: true, main: true }, { k: 'rata', l: 'Rata / canone' },
+    D('inizio', 'Data di inizio'), EXP('scadenza', 'Scadenza / rinnovo')] },
+  caldaia: { label: 'Caldaia e impianti', emoji: '🔥', hue: 12, cat: 'casa', fields: [
+    { k: 'impianto', l: 'Impianto', ph: 'Caldaia, condizionatore' }, { k: 'marca', l: 'Marca e modello', main: true },
+    { k: 'tecnico', l: 'Manutentore' }, D('ultima', 'Ultimo controllo'), EXP('scadenza', 'Prossimo controllo')] },
+
+  // Elettrodomestici
+  elettrodomestico: { label: 'Elettrodomestico', emoji: '🧺', hue: 205, cat: 'elettro', fields: [
+    { k: 'prodotto', l: 'Prodotto', ph: 'es. Lavatrice' }, { k: 'marca', l: 'Marca e modello' },
+    { k: 'seriale', l: 'Numero di serie', mono: true, main: true, upper: true }, { k: 'negozio', l: 'Acquistato presso' },
+    D('acquisto', 'Data di acquisto'), { k: 'prezzo', l: 'Prezzo' }, WARRANTY, { k: 'assistenza', l: 'Assistenza (telefono)' }] },
+
+  // Garanzie e acquisti
+  acquisto: { label: 'Acquisto con garanzia', emoji: '🛍️', hue: 290, cat: 'garanzie', fields: [
+    { k: 'prodotto', l: 'Prodotto', ph: 'es. Smartphone, PC, divano' }, { k: 'marca', l: 'Marca e modello' },
+    { k: 'negozio', l: 'Negozio / sito' }, { k: 'ordine', l: 'N. scontrino / ordine', mono: true, main: true },
+    D('acquisto', 'Data di acquisto'), { k: 'prezzo', l: 'Prezzo' }, WARRANTY] },
+  estensione: { label: 'Garanzia estesa', emoji: '📑', hue: 270, cat: 'garanzie', fields: [
+    { k: 'prodotto', l: 'Prodotto coperto' }, { k: 'fornitore', l: 'Fornitore' },
+    { k: 'numero', l: 'Numero contratto', mono: true, main: true }, D('inizio', 'Inizio copertura'), EXP('scadenza', 'Fine copertura')] },
+
+  // Salute
+  certmedico: { label: 'Certificato medico sportivo', emoji: '🏃', hue: 120, cat: 'salute', fields: [
+    { k: 'tipo', l: 'Tipo', ph: 'Agonistico, non agonistico' }, { k: 'sport', l: 'Sport' },
+    { k: 'medico', l: 'Medico / centro', main: true }, D('rilascio', 'Data di rilascio'), EXP('scadenza', 'Scadenza')] },
+  vaccino: { label: 'Vaccinazione', emoji: '💉', hue: 160, cat: 'salute', fields: [
+    { k: 'vaccino', l: 'Vaccino', main: true }, D('data', 'Data'), { k: 'lotto', l: 'Lotto', mono: true },
+    EXP('scadenza', 'Prossimo richiamo')] },
+  esenzione: { label: 'Esenzione ticket', emoji: '🩺', hue: 140, cat: 'salute', fields: [
+    { k: 'codice', l: 'Codice esenzione', mono: true, main: true, upper: true }, { k: 'motivo', l: 'Motivo' },
+    D('rilascio', 'Data di rilascio'), EXP('scadenza', 'Scadenza')] },
+
+  // Assicurazioni e abbonamenti
+  polizza: { label: 'Assicurazione', emoji: '🛡️', hue: 180, cat: 'polizze', fields: [
+    { k: 'tipo', l: 'Tipo', ph: 'Casa, vita, infortuni, viaggio' }, { k: 'compagnia', l: 'Compagnia' },
+    { k: 'numero', l: 'Numero polizza', mono: true, main: true }, { k: 'premio', l: 'Premio annuo' }, EXP('scadenza', 'Scadenza')] },
+  abbonamento: { label: 'Abbonamento', emoji: '🔁', hue: 250, cat: 'polizze', fields: [
+    { k: 'servizio', l: 'Servizio', ph: 'Palestra, streaming, trasporti' }, { k: 'numero', l: 'Codice / tessera', mono: true, main: true },
+    { k: 'costo', l: 'Costo' }, EXP('scadenza', 'Rinnovo / scadenza')] },
+
+  // Banca e carte
+  carta: { label: 'Carta di pagamento', emoji: '💳', hue: 230, cat: 'finanze', fields: [
+    { k: 'banca', l: 'Banca' }, { k: 'circuito', l: 'Circuito', ph: 'Visa, Mastercard, Bancomat' },
+    { k: 'ultime', l: 'Ultime 4 cifre', mono: true, main: true }, EXP('scadenza', 'Scadenza carta')] },
+  conto: { label: 'Conto corrente', emoji: '🏦', hue: 210, cat: 'finanze', fields: [
+    { k: 'banca', l: 'Banca' }, { k: 'iban', l: 'IBAN', mono: true, main: true, upper: true }, { k: 'filiale', l: 'Filiale' }] },
+
+  // Viaggi
+  visto: { label: 'Visto / ESTA', emoji: '🌍', hue: 175, cat: 'viaggio', fields: [
+    { k: 'paese', l: 'Paese' }, { k: 'numero', l: 'Numero', mono: true, main: true }, D('rilascio', 'Data di rilascio'),
+    EXP('scadenza', 'Scadenza')] },
+
+  // Lavoro e formazione
+  attestato: { label: 'Attestato o corso', emoji: '🎓', hue: 265, cat: 'formazione', fields: [
+    { k: 'corso', l: 'Corso', ph: 'es. Sicurezza, primo soccorso' }, { k: 'ente', l: 'Ente' },
+    { k: 'numero', l: 'Numero attestato', mono: true, main: true }, D('conseguito', 'Conseguito il'), EXP('scadenza', 'Aggiornamento entro')] },
+
+  // Animali domestici
+  animale: { label: 'Animale domestico', emoji: '🐾', hue: 30, cat: 'animali', fields: [
+    { k: 'nome', l: 'Nome' }, { k: 'specie', l: 'Specie e razza' }, { k: 'microchip', l: 'Microchip', mono: true, main: true },
+    { k: 'veterinario', l: 'Veterinario' }, EXP('scadenza', 'Prossimo vaccino')] },
+
   altro: { label: 'Altro documento', emoji: '📄', hue: 40, cat: 'altro', fields: [
-    { k: 'numero', l: 'Numero', mono: true, main: true },
-    { k: 'scadenza', l: 'Scadenza', t: 'date', expiry: true },
-  ] },
+    { k: 'numero', l: 'Numero', mono: true, main: true }, EXP('scadenza', 'Scadenza')] },
 };
+
+const shortLabel = (sec) => sec.short || sec.label;
+const sectionOf = (id) => SECTIONS.find((s) => s.id === id) || null;
+const typesIn = (sectionId) => Object.keys(TYPES).filter((k) => TYPES[k].cat === sectionId);
 
 const SOON_DAYS = 90;
 
@@ -272,10 +345,7 @@ const entryText = (e) => (e.def?.t === 'date' ? fmtDate(e.value) : e.value);
 // browser; si decifra in memoria con la password e nulla viene mai inviato in rete.
 
 const $ = (id) => document.getElementById(id);
-const CATS = [
-  ['all', 'Tutti'], ['expiring', 'In scadenza'], ['identita', 'Identità'], ['viaggio', 'Viaggio'],
-  ['veicoli', 'Guida e veicoli'], ['salute', 'Salute'], ['altro', 'Altro'],
-];
+const CATS = [['all', 'Tutti'], ['expiring', 'In scadenza'], ...SECTIONS.map((x) => [x.id, shortLabel(x)])];
 const VIEWABLE_IMG = /^image\/(jpeg|png|gif|webp|bmp|heic|heif|tiff)$/;
 
 const state = {
@@ -702,7 +772,7 @@ function renderList() {
     type: 'button', class: 'pchip' + (state.person === id ? ' on' : ''),
     onclick: () => { state.person = id; state.filter = 'all'; renderList(); $('list-scroll').scrollTop = 0; },
   }, av, el('span', { class: 'pn' }, label), n != null ? el('span', { class: 'n' + (warn ? ' hot' : '') }, n) : null);
-  $('people').hidden = people.length < 2 && !unassigned;
+  $('people').hidden = people.length === 0 || (people.length < 2 && !unassigned);
   $('people').replaceChildren(...[
     pchip('all', 'Tutti', el('span', { class: 'avatar all' }, '★'), null),
     ...people.map((p) => {
